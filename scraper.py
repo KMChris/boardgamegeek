@@ -8,7 +8,7 @@ from random import random
 import pandas as pd
 import os
 
-def read_games():
+def read_games(filename='games.csv'):
     columns = ['name', 'year', 'description',
         'min_players', 'max_players', 'min_play_time',
         'max_play_time', 'min_age', 'complexity',
@@ -22,7 +22,7 @@ def read_games():
         'owners', 'prev_owned', 'for_trade',
         'want_in_trade', 'wishlist']
     try:
-        df = pd.read_csv('games.csv')
+        df = pd.read_csv(filename, sep=';')
         eval_columns = ['alternate_names', 'designers', 'artists', 'publishers']
         df[eval_columns] = df[eval_columns].map(eval)
     except FileNotFoundError:
@@ -30,11 +30,13 @@ def read_games():
     return df
 
 class Scraper:
-    def __init__(self, pages=100):
+    def __init__(self, games=10000):
         options = ChromeOptions()
         options.add_argument('--headless')
+        options.add_argument('--log-level=3')
         self.driver = webdriver.Chrome(options=options)
-        self.links = self.get_links(pages=pages)
+        self.links = self.get_links(pages=games // 100)
+        self.games = games
         self.setup()
 
     def setup(self):
@@ -83,12 +85,15 @@ class Scraper:
                 f.write(link + "\n")
         return links
 
-    def get_property(self, selector, attribute='text', convert=None):
+    def get_property(self, selector, attribute='text', element=None, convert=None):
         try:
+            if element is None:
+                element = self.driver
+            
             if attribute == 'text':
-                result = self.driver.find_element(By.CSS_SELECTOR, selector).text
+                result = element.find_element(By.CSS_SELECTOR, selector).text
             else:
-                result = self.driver.find_element(By.CSS_SELECTOR, selector).get_attribute(attribute)
+                result = element.find_element(By.CSS_SELECTOR, selector).get_attribute(attribute)
             
             if convert:
                 return convert(result)
@@ -140,9 +145,9 @@ class Scraper:
             'Wishlist': 'wishlist'
         }
         for elem in self.driver.find_elements(By.CLASS_NAME, 'outline-item'):
-            title = self.get_property(elem, '.outline-item-title')
+            title = self.get_property('.outline-item-title', element=elem)
             if title in titles:
-                game[titles[title]] = self.get_property(elem, '.outline-item-description',
+                game[titles[title]] = self.get_property('.outline-item-description', element=elem,
                                                 convert=lambda x: x.split('\n')[0].replace(',', ''))
 
         # Rank distribution
@@ -154,24 +159,39 @@ class Scraper:
                 game['ratings_' + str(i+1)] = None
         return game
 
-    def get_games(self, games=100):
-        df = read_games()
+    def get_games(self, checkpoint=100, filename='games.csv'):
+        df = read_games(filename)
         offset = len(df)
-        for link in tqdm(self.links[offset:offset+games]):
+        for link in tqdm(self.links[offset:self.games]):
             df.loc[len(df)] = self.get_game(link)
-            if len(df) % 10 == 0 or len(df) == offset + games:
-                df.to_csv('games.csv', index=False)
+            if len(df) % checkpoint == 0 or len(df) == self.games:
+                df.to_csv(filename, index=False)
+
+    def fill_missing(self, column='avg_rating', filename='games.csv'):
+        df = pd.read_csv(filename, dtype=str, sep=';')
+        for i, row in df.iterrows():
+            if pd.isnull(row[column]):
+                df.loc[i] = self.get_game(self.links[i])
+                print(df.loc[i])
+                print(f'Filled missing data for game {i}')
+        df.to_csv(filename, index=False)
+
 
     def __del__(self):
-        self.quit()
+        self.driver.quit()
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
 
-    parser = ArgumentParser()
-    parser.add_argument('-p', '--pages', type=int, default=100)
-    parser.add_argument('-g', '--games', type=int, default=10000)
+    parser = ArgumentParser(description='Scrape boardgamegeek.com for board games data')
+    parser.add_argument('-g', '--games', type=int, default=10000,
+                        help='number of games to scrape (default: 10000)')
+    parser.add_argument('-c', '--checkpoint', type=int, default=100,
+                        help='save checkpoint every n games scrapped (default: 100)')
+    parser.add_argument('-f', '--filename', default='games.csv',
+                        help='name of the file to save the data to (default: games.csv)')
     args = parser.parse_args()
 
-    scraper = Scraper(pages=args.pages)
-    scraper.get_games(limit=args.games)
+    scraper = Scraper(games=args.games)
+    scraper.get_games(checkpoint=args.checkpoint, filename=args.filename)
+    del scraper

@@ -1,0 +1,288 @@
+---
+title: "Projekt"
+subtitle: "Technologie webowe"
+author:
+  - Krzysztof Mizgała, album 262839
+date: "2024-12-20"
+lang: pl
+mainfont: Latin Modern Roman
+sansfont: Latin Modern Roman
+fontsize: 12pt
+format:
+  pdf:
+    toc: true
+    colorlinks: true
+    fig-pos: H
+execute: 
+  enabled: true
+  cache: true
+---
+
+```{python}
+#| label: setup
+#| include: false
+import numpy as np
+import matplotlib as mpl
+from matplotlib import pyplot as plt
+from scraper import Scraper, read_games
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPRegressor
+from sklearn.ensemble import GradientBoostingRegressor
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from tabulate import tabulate
+from IPython.display import Markdown, display
+def print_table(table, headers='firstrow', **kwargs):
+  display(Markdown(tabulate(table, headers=headers, **kwargs)))
+```
+\newpage
+
+# Wprowadzenie
+
+## Cel projektu
+
+Projekt polega na scrapowaniu danych o grach planszowych z serwisu [BoardGameGeek](https://boardgamegeek.com/) oraz analizie tych danych. Dane są pobierane za pomocą skryptu w Pythonie, który wykorzystuje bibliotekę Selenium do nawigacji po stronie internetowej i pobierania informacji o grach. Zebrane dane są następnie analizowane przy użyciu różnych technik analizy danych i uczenia maszynowego.
+
+## Czym jest scrapowanie danych?
+
+Scrapowanie danych, znane również jako web scraping, to proces automatycznego pobierania informacji ze stron internetowych. Wykorzystuje się do tego specjalne skrypty lub narzędzia, które nawigują po stronach, pobierają zawartość i przetwarzają ją w celu uzyskania potrzebnych danych. Scrapowanie danych jest szczególnie przydatne, gdy dane nie są dostępne w formie łatwo dostępnych plików do pobrania, ale są wyświetlane na stronach internetowych.
+
+## Dlaczego BoardGameGeek.com?
+
+BoardGameGeek.com (BGG) jest jednym z najbardziej znanych i szanowanych serwisów internetowych poświęconych grom planszowym. Strona ta jest szeroko uznawana za jedno z głównych źródeł informacji o grach planszowych, zarówno wśród graczy, jak i&nbsp;wydawców oraz projektantów gier. Dzięki swojej popularności, BGG gromadzi ogromną ilość danych na temat gier planszowych, co czyni go idealnym źródłem do analizy.
+
+# Przegląd technologii
+
+- Technologie i narzędzia użyte w projekcie (Python, Selenium, Pandas, Matplotlib).
+- Krótka charakterystyka wybranych bibliotek i frameworków.
+
+- **Biblioteki Python**: Selenium, pandas, tqdm, dotenv.  
+- **Przeglądarka**: Chrome (lub inna wspierana przez Selenium, z odpowiednim WebDriverem).  
+- **Plik .env**: Przechowuje dane logowania (`USER` i `PASS`) do serwisu BoardGameGeek.
+
+## Struktura projektu
+
+- `scraper.py`: Skrypt do scrapowania danych z BoardGameGeek.
+- `projekt.ipynb`: Notebook Jupyter zawierający kod do analizy danych.
+- `games.csv`: Plik CSV zawierający zebrane dane o grach planszowych.
+- `raport.pdf`: Raport końcowy w formacie PDF.
+
+# Scrapowanie danych
+
+## Przygotowanie środowiska
+
+Aby rozpocząć proces scrapowania danych, należy spełnić następujące wymagania:
+
+1. **Python 3.11**: Upewnij się, że masz zainstalowaną wersję Python 3.11.
+2. **Google Chrome**: Zainstaluj przeglądarkę Google Chrome.
+3. **ChromeDriver**: Pobierz [ChromeDriver](https://googlechromelabs.github.io/chrome-for-testing/#stable) i umieść go w katalogu zawierającym plik `scraper.py` lub dodaj jego lokalizację do zmiennej środowiskowej `PATH`.
+4. **Biblioteki Python**: Zainstaluj wymagane biblioteki, wykonując poniższe polecenie:
+   
+   ```sh
+   pip install -r requirements.txt
+   ```
+5. **Utwórz plik `.env`**: Utwórz plik `.env` w katalogu projektu i dodaj do niego swoje dane logowania do BoardGameGeek:
+   
+   ```sh
+   USER='twoja_nazwa_uzytkownika'
+   PASS='twoje_haslo'
+   ```
+
+## Uruchomienie scrapera
+
+Aby uruchomić scraper i pobrać dane o grach planszowych, wykonaj poniższe polecenie w terminalu:
+```sh
+python scraper.py
+```
+
+Scraper posiada również następujące opcje wiersza poleceń (flagi):
+
+- `-g` lub `--games`: liczba gier do pobrania (domyślnie 10000)
+- `-c` lub `--checkpoint`: zapisuj dane co określoną liczbę gier (domyślnie 100)
+- `-f` lub `--filename`: nazwa pliku do zapisu danych (domyślnie `games.csv`)
+
+Na przykład, aby pobrać dane o 5000 grach, zapisywać dane co 50 gier w pliku `my_games.csv`:
+```sh
+python scraper.py -g 5000 -c 50 -f my_games.csv
+```
+
+## Proces scrapowania
+
+### Logowanie do serwisu
+
+- Skrypt `scraper.py` inicjalizuje obiekt klasy `Scraper`, który konfiguruje przeglądarkę Chrome w trybie headless (bez interfejsu graficznego).
+- Po wejściu na stronę scraper automatycznie akceptuje pliki cookie.
+- Scraper otwiera panel logowania BoardGameGeek. Logowanie jest konieczne, aby uzyskać pełen dostęp do danych.
+- Logowanie odbywa się za pomocą danych użytkownika (nazwa użytkownika i hasło) pobranych z pliku `.env`.
+- Selenium symuluje wypełnienie pól logowania oraz kliknięcie przycisku ,,Zaloguj".
+
+### Pobieranie linków
+
+Metoda `get_links` pobiera linki do stron z grami planszowymi.
+Na każdej podstronie rankingu wyświetlane jest 100 gier.
+W celu uzyskania wystarczającego zbioru danych do analizy, pobieramy dane ze 100 stron, co daje nam zbiór 10 tys. gier.
+Domyślnie gry są posortowane według oceny, zatem sortujemy je po liczbie ocen malejąco, aby uzyskać jak najbardziej wiarygodne wyniki.
+
+Odwiedzamy kolejne strony rankingu, używając adresów URL zawierających numer strony.
+Linki są zapisywane w pliku `links.txt`, aby uniknąć ponownego pobierania w przypadku przerwania procesu.
+
+### Pobieranie danych o grach
+
+Metoda `get_games` iteruje przez pobrane linki i dla każdej gry pobiera szczegółowe informacje. Dla każdej gry wykonano następujące kroki:
+
+- Odwiedzano zakładkę z danymi statystycznymi (`/stats`) na stronie szczegółowej gry.
+- Pobierano informacje o grze, w tym:
+  - **Podstawowe dane**: nazwa gry, rok wydania, liczba graczy, czas rozgrywki, wymagany wiek, złożoność gry i alternatywne nazwy gry (jeśli istnieją).
+  - **Opinie**: liczba ocen, średnia ocena, odchylenie standardowe oraz dokładny rozkład ocen w skali od 1 do 10.
+  - **Statystyki**: liczba komentarzy, fanów, wyświetleń strony, liczba rozgrywek (ogółem i w bieżącym miesiącu).
+  - **Informacje o posiadaniu**: liczba osób posiadających grę, liczba chętnych na zakup lub wymianę.
+  - **Osoby zaangażowane**: projektanci, artyści i wydawcy.
+- Wszystkie te informacje były wyodrębniane przy użyciu odpowiednich selektorów CSS i metod Selenium (`find_element` lub `find_elements`).
+- Dane są zapisywane w formie słownika i dodawane do listy gier.
+- W przypadku brakujących danych, skrypt zapisuje wartość `None`. Dodatkowa metoda `fill_missing` umożliwia ponowne odwiedzenie stron gier z brakującymi danymi w celu ich uzupełnienia (jeśli brak danych wynikał z błędu ładowania strony).
+
+### Zabezpieczenia i optymalizacja
+
+- W przypadku problemów z ładowaniem strony (np. pusta strona lub opóźnienia serwera), skrypt wykonuje wielokrotne próby ponownego załadowania strony.
+- Dla zabezpieczenia danych postęp scrapowania jest zapisywany regularnie, co umożliwia wznowienie pracy od ostatniego zarejestrowanego punktu kontrolnego.
+- W celu zmniejszenia ryzyka blokady przez serwer BoardGameGeek, wprowadzono losowe opóźnienia między zapytaniami (od 2 do 10 sekund).
+
+### Zapisywanie danych
+
+Dane są zapisywane w pliku `games.csv` co określoną liczbę gier (domyślnie co 100 gier), aby zapewnić bezpieczeństwo danych w przypadku przerwania procesu.
+Format CSV pozwala na łatwe wczytanie danych do analizy przy użyciu biblioteki `pandas`.
+
+### Zakończenie
+
+Po zakończeniu procesu scrapowania, przeglądarka Chrome jest zamykana, a dane są gotowe do analizy.
+
+# Analiza danych
+
+Strona [boardgamesgeek](https://boardgamegeek.com/) ma 10-stopniową skalę oceniania gier planszowych.
+Gry oceniane są od 1 do 10, gdzie 1 oznacza najgorszą ocenę, a 10 najlepszą.
+Zbadamy cechy gier, które mają wpływ na ich lepszą ocenę oraz cechy, które wpływają na największą spójność ocen (czyli czy gra jest oceniana podobnie przez różnych użytkowników).
+Spróbujemy także stworzyć modele predykcyjne, które będą przewidywać jak może być oceniana gra na podstawie jej cech.
+
+## Struktura danych
+
+Pierwszym krokiem analizy jest wczytanie danych z pliku `games.csv`, uzyskanego w wyniku scrapowania.
+
+```{python}
+#| label: load-data
+df = read_games()
+df.shape
+```
+
+Mamy przygotowane dane 10 tys. wierszy i 36 kolumn, z których 6 to zmienne kategoryczne, a 30 to kolumny z danymi liczbowymi. Zebrane dane zawierają następujące kolumny:
+
+1. Podstawowe informacje:
+   - Nazwa (name)
+   - Rok wydania (year)
+   - Opis (description)
+   - Wymagana liczba graczy (min_players, max_players)
+   - Czas gry (min_playtime, max_playtime)
+   - Wymagany wiek (min_age)
+   - Złożoność gry (complexity)
+   - Alternatywne nazwy (alternate_names)
+   - Designerzy (designers)
+   - Artyści (artists)
+   - Wydawcy (publishers)
+
+2. Opinie:
+   - Liczba ocen (ratings)
+   - Średnia ocena (avg_rating)
+   - Odchylenie standardowe (std_rating)
+   - Rozkład ocen (ratings_1, ratings_2, ..., ratings_10)
+
+3. Statystyki gry:
+   - Liczba komentarzy (comments)
+   - Liczba fanów (fans)
+   - Wyświetlenia strony (page_views)
+
+4. Statystyki rozgrywek:
+   - Liczba rozgrywek (plays)
+   - Liczba rozgrywek w tym miesiącu (plays_month)
+
+5. Dane na temat posiadania gry:
+   - Liczba osób posiadających grę (owners)
+   - Liczba osób, które posiadały grę (prev_owned)
+   - Liczba osób, które chcą sprzedać grę (for_trade)
+   - Liczba osób, które chcą kupić grę (want_in_trade)
+   - Liczba osób, które mają grę na liście życzeń (wishlist)
+
+## Czyszczenie i przetwarzanie danych
+
+Usuwamy kolumnę `description` ponieważ nie wykorzystujemy jej w analizie.
+```{python}
+#| label: clean-data-1
+df = df.drop(columns=['description'])
+```
+
+Usuwamy wiersze z brakującymi danymi.
+```{python}
+#| label: clean-data-2
+df = df.dropna()
+```
+
+Konwertujemy zmienne na odpowiednie typy danych.
+```{python}
+#| label: clean-data-3
+cols_float = ['complexity', 'avg_rating', 'std_rating']
+cols_int = ['year', 'min_players', 'max_players', 'min_play_time', 'max_play_time',
+            'min_age', 'ratings', 'ratings_1', 'ratings_2', 'ratings_3', 'ratings_4',
+            'ratings_5', 'ratings_6', 'ratings_7', 'ratings_8', 'ratings_9',
+            'ratings_10', 'comments', 'fans', 'page_views', 'plays', 'plays_month',
+            'owners', 'prev_owned', 'for_trade', 'want_in_trade', 'wishlist']
+cols_list = ['alternate_names', 'designers', 'artists', 'publishers']
+df[cols_float] = df[cols_float].astype(np.float32)
+df[cols_int] = df[cols_int].astype(np.int32)
+df[cols_list] = df[cols_list].map(lambda x: [i.strip(',') for i in x])
+```
+
+## Analiza danych
+
+```{python}
+#| label: data-analysis
+print_table(df.describe().T, headers='keys')
+```
+
+- Cel analizy (np. zidentyfikowanie najpopularniejszych gier, analiza ocen w zależności od liczby graczy).
+- Metody analizy (np. statystyki opisowe, wizualizacje).
+- Szczegółowe wyniki:
+  - Wykresy, tabele, wnioski.
+  - Przykłady interesujących zależności.
+
+## Wyniki i wnioski
+
+- Podsumowanie najważniejszych wyników analizy.
+- Interpretacja wyników w kontekście tematyki gier planszowych.
+
+# Modelowanie predykcyjne
+
+W przypadku predykcji oceny gry, nie będziemy korzystać z żadnej ze zmiennych związanych z ocenami, aby uniknąć tzw. ,,data leakage" (wycieku danych).
+
+## Przygotowanie danych
+
+# Podsumowanie
+
+Wnioski końcowe
+
+- Refleksje nad procesem realizacji projektu.
+- Możliwości ulepszenia scrapera i analizy w przyszłości.
+
+**Zastosowania Scrapera:**
+
+1. **Analiza gier planszowych**  
+   Dane zebrane przez scraper mogą być wykorzystane do analiz popularności, ocen i statystyk związanych z grami planszowymi.
+   
+2. **Tworzenie rekomendacji**  
+   Informacje o ocenach i opiniach użytkowników mogą służyć do budowania systemów rekomendacyjnych.
+
+3. **Porównania i statystyki rynkowe**  
+   Zebrane dane umożliwiają identyfikację trendów w branży gier planszowych, popularnych projektantów czy wydawców.
+
+4. **Tworzenie baz danych**  
+   Dzięki zapisowi danych w pliku CSV, możliwe jest łatwe tworzenie własnych baz danych do dalszych analiz.
