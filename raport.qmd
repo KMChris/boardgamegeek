@@ -37,6 +37,17 @@ from tabulate import tabulate
 from IPython.display import Markdown, display
 def print_table(table, headers='firstrow', **kwargs):
   display(Markdown(tabulate(table, headers=headers, **kwargs)))
+
+mpl.rcParams['font.family'] = 'serif'
+mpl.rcParams['font.serif'] = ['Latin Modern Roman', 'Times New Roman', 'serif']
+mpl.rcParams['font.size'] = 12
+mpl.rcParams['axes.spines.top'] = False
+mpl.rcParams['axes.spines.right'] = False
+mpl.rcParams['axes.titlesize'] = 16
+mpl.rcParams['axes.titlepad'] = 4
+mpl.rcParams['axes.titleweight'] = 400
+mpl.rcParams['figure.dpi'] = 100
+mpl.rcParams['figure.figsize'] = (8, 6)
 ```
 \newpage
 
@@ -161,14 +172,15 @@ Po zakończeniu procesu scrapowania, przeglądarka Chrome jest zamykana, a dane 
 
 # Analiza danych
 
-Strona [boardgamesgeek](https://boardgamegeek.com/) ma 10-stopniową skalę oceniania gier planszowych.
+Strona BoardGameGeek ma 10-stopniową skalę oceniania gier planszowych.
 Gry oceniane są od 1 do 10, gdzie 1 oznacza najgorszą ocenę, a 10 najlepszą.
+
 Zbadamy cechy gier, które mają wpływ na ich lepszą ocenę oraz cechy, które wpływają na największą spójność ocen (czyli czy gra jest oceniana podobnie przez różnych użytkowników).
-Spróbujemy także stworzyć modele predykcyjne, które będą przewidywać jak może być oceniana gra na podstawie jej cech.
+W następnej sekcji spróbujemy także stworzyć modele predykcyjne, które będą przewidywać jak może być oceniana gra na podstawie jej cech.
 
 ## Struktura danych
 
-Pierwszym krokiem analizy jest wczytanie danych z pliku `games.csv`, uzyskanego w wyniku scrapowania.
+Pierwszym krokiem analizy jest wczytanie danych z pliku `games.csv`, uzyskanego w&nbsp;wyniku scrapowania.
 
 ```{python}
 #| label: load-data
@@ -187,7 +199,7 @@ Mamy przygotowane dane 10 tys. wierszy i 36 kolumn, z których 6 to zmienne kate
    - Wymagany wiek (min_age)
    - Złożoność gry (complexity)
    - Alternatywne nazwy (alternate_names)
-   - Designerzy (designers)
+   - Projektanci (designers)
    - Artyści (artists)
    - Wydawcy (publishers)
 
@@ -230,6 +242,7 @@ df = df.dropna()
 Konwertujemy zmienne na odpowiednie typy danych.
 ```{python}
 #| label: clean-data-3
+#| echo: false
 cols_float = ['complexity', 'avg_rating', 'std_rating']
 cols_int = ['year', 'min_players', 'max_players', 'min_play_time', 'max_play_time',
             'min_age', 'ratings', 'ratings_1', 'ratings_2', 'ratings_3', 'ratings_4',
@@ -237,16 +250,91 @@ cols_int = ['year', 'min_players', 'max_players', 'min_play_time', 'max_play_tim
             'ratings_10', 'comments', 'fans', 'page_views', 'plays', 'plays_month',
             'owners', 'prev_owned', 'for_trade', 'want_in_trade', 'wishlist']
 cols_list = ['alternate_names', 'designers', 'artists', 'publishers']
+```
+```{python}
+#| label: clean-data-4
 df[cols_float] = df[cols_float].astype(np.float32)
 df[cols_int] = df[cols_int].astype(np.int32)
 df[cols_list] = df[cols_list].map(lambda x: [i.strip(',') for i in x])
 ```
 
-## Analiza danych
+## Analiza statystyk opisowych
 
 ```{python}
-#| label: data-analysis
-print_table(df.describe().T, headers='keys')
+#| label: numerical-stats
+#| tbl-cap: Statystyki opisowe dla zmiennych liczbowych
+#| echo: false
+print_table(df.describe().T[['mean', 'std', 'min', '25%', '50%', '75%', 'max']], headers='keys')
+```
+
+Najczęściej występujące wartości w kolumnach z danymi kategorycznymi.
+```{python}
+#| label: categorical-stats-1
+#| tbl-cap: Najczęściej występujący projektanci gier planszowych
+#| echo: false
+# zwracamy uwagę na to, że każda kolumna z listą zawiera więcej niż jedną wartość
+print_table(df['designers'].explode().value_counts().head(10).reset_index().values, headers=['Projektant', 'Liczba gier'])
+```
+```{python}
+#| label: categorical-stats-2
+#| tbl-cap: Najczęściej występujący artyści gier planszowych
+#| echo: false
+print_table(df['artists'].explode().value_counts().head(10).reset_index().values, headers=['Artysta', 'Liczba gier'])
+```
+```{python}
+#| label: categorical-stats-3
+#| tbl-cap: Najczęściej występujący wydawcy gier planszowych
+#| echo: false
+print_table(df['publishers'].explode().value_counts().head(10).reset_index().values, headers=['Wydawca', 'Liczba gier'])
+```
+
+## Analiza eksploracyjna
+
+```{python}
+#| label: ratings-distribution
+#| fig-cap: Rozkład ocen gier planszowych
+#| echo: false
+ratings = [f'ratings_{i}' for i in range(1, 11)]
+ratings = df[ratings].sum()
+
+plt.bar(list(range(1, 11)), ratings)
+plt.xlabel('Ocena')
+plt.ylabel('Liczba ocen')
+plt.title('Rozkład ocen gier planszowych')
+plt.show()
+```
+
+```{python}
+#| label: correlation-matrix
+#| tbl-cap: Macierz korelacji między zmiennymi numerycznymi
+#| echo: false
+corr = df.select_dtypes(include='number').corr()
+plt.matshow(corr)
+plt.xticks(range(len(corr)), corr.columns)
+plt.yticks(range(len(corr)), corr.columns)
+plt.colorbar()
+plt.title('Korelacje między zmiennymi numerycznymi')
+plt.xticks(rotation=90)
+plt.xticks(fontsize=8)
+plt.yticks(fontsize=8)
+plt.show()
+```
+
+```{python}
+#| label: top-games
+#| tbl-cap: Najczęściej oceniane gry planszowe i ich oceny
+#| echo: false
+top_games = df[['name', 'avg_rating', 'ratings']].sort_values('ratings', ascending=False).head(10)
+print_table(top_games.values, headers=['Gra', 'Średnia ocena', 'Liczba ocen'])
+```
+
+TODO: Liczba gier do projektantów
+```{python}
+#| label: top-designers
+#| tbl-cap: Najlepsi projektanci gier planszowych według średniej oceny
+#| echo: false
+top_designers = df.explode('designers').groupby('designers')['avg_rating'].mean().sort_values(ascending=False).head(10)
+print_table(top_designers.reset_index().values, headers=['Projektant', 'Średnia ocena'])
 ```
 
 - Cel analizy (np. zidentyfikowanie najpopularniejszych gier, analiza ocen w zależności od liczby graczy).
@@ -254,6 +342,70 @@ print_table(df.describe().T, headers='keys')
 - Szczegółowe wyniki:
   - Wykresy, tabele, wnioski.
   - Przykłady interesujących zależności.
+
+Interesujące zależności:
+
+```{python}
+#| label: complexity-vs-rating
+#| fig-cap: Złożoność w stosunku do średniej oceny
+#| echo: false
+plt.scatter(df['complexity'], df['avg_rating'], alpha=0.6)
+plt.title("Średnia ocena vs Złożoność")
+plt.xlabel("Złożoność")
+plt.ylabel("Średnia ocena")
+plt.show()
+```
+
+```{python}
+#| label: fans-vs-rating
+#| fig-cap: Liczba fanów w stosunku do średniej oceny
+#| echo: false
+plt.scatter(df['fans'], df['avg_rating'], alpha=0.6)
+plt.title("Średnia ocena vs Liczba fanów")
+plt.xlabel("Liczba fanów")
+plt.ylabel("Średnia ocena")
+plt.show()
+```
+
+```{python}
+#| label: min-players-vs-rating
+#| fig-cap: Minimalna liczba graczy w stosunku do średniej oceny
+#| echo: false
+grouped_data = [df[df['min_players'] == i]['avg_rating'].values
+                for i in sorted(df['min_players'].unique())]
+plt.violinplot(grouped_data, showmeans=True)
+plt.title("Średnia ocena vs Minimalna liczba graczy")
+plt.xlabel("Minimalna liczba graczy")
+plt.ylabel("Średnia ocena")
+plt.show()
+```
+
+```{python}
+#| label: avg-rating-by-year
+#| fig-cap: Średnia ocena gier planszowych na przestrzeni lat (od 1900 roku)
+#| echo: false
+df.groupby('year')['avg_rating'].mean().plot(kind='line', color='red')
+plt.title("Średnia ocena na przestrzeni lat")
+plt.xlabel("Rok wydania")
+plt.ylabel("Średnia ocena")
+plt.xlim(1900, 2024)
+plt.show()
+```
+
+Średnia ocena w zależności od projektanta (20 najpopularniejszych)
+```{python}
+#| label: avg-rating-by-designer
+#| fig-cap: Średnia ocena gier planszowych według projektantów
+#| echo: false
+top_designers = df['designers'].explode().value_counts().head(20).index
+df_designers = df.explode('designers')
+df_designers = df_designers[df_designers['designers'].isin(top_designers)]
+df_designers.groupby('designers')['avg_rating'].mean().sort_values().plot(kind='barh')
+plt.title("Średnia ocena gier według projektantów")
+plt.xlabel("Średnia ocena")
+plt.ylabel("Projektant")
+plt.show()
+```
 
 ## Wyniki i wnioski
 
@@ -265,6 +417,12 @@ print_table(df.describe().T, headers='keys')
 W przypadku predykcji oceny gry, nie będziemy korzystać z żadnej ze zmiennych związanych z ocenami, aby uniknąć tzw. ,,data leakage" (wycieku danych).
 
 ## Przygotowanie danych
+
+```{python}
+#| label: prepare-data
+#| echo: false
+...
+```
 
 # Podsumowanie
 
