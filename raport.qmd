@@ -22,6 +22,7 @@ execute:
 #| label: setup
 #| include: false
 import numpy as np
+import pandas as pd
 import matplotlib as mpl
 from matplotlib import pyplot as plt
 from scraper import Scraper, read_games
@@ -31,6 +32,8 @@ from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.preprocessing import MultiLabelBinarizer
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
 from tabulate import tabulate
@@ -64,15 +67,6 @@ Scrapowanie danych, znane również jako web scraping, to proces automatycznego 
 ## Dlaczego BoardGameGeek.com?
 
 BoardGameGeek.com (BGG) jest jednym z najbardziej znanych i szanowanych serwisów internetowych poświęconych grom planszowym. Strona ta jest szeroko uznawana za jedno z głównych źródeł informacji o grach planszowych, zarówno wśród graczy, jak i&nbsp;wydawców oraz projektantów gier. Dzięki swojej popularności, BGG gromadzi ogromną ilość danych na temat gier planszowych, co czyni go idealnym źródłem do analizy.
-
-# Przegląd technologii
-
-- Technologie i narzędzia użyte w projekcie (Python, Selenium, Pandas, Matplotlib).
-- Krótka charakterystyka wybranych bibliotek i frameworków.
-
-- **Biblioteki Python**: Selenium, pandas, tqdm, dotenv.  
-- **Przeglądarka**: Chrome (lub inna wspierana przez Selenium, z odpowiednim WebDriverem).  
-- **Plik .env**: Przechowuje dane logowania (`USER` i `PASS`) do serwisu BoardGameGeek.
 
 ## Struktura projektu
 
@@ -267,7 +261,11 @@ df[cols_list] = df[cols_list].map(lambda x: [i.strip(',') for i in x])
 print_table(df.describe().T[['mean', 'std', 'min', '25%', '50%', '75%', 'max']], headers='keys')
 ```
 
-Najczęściej występujące wartości w kolumnach z danymi kategorycznymi.
+- Średnia liczba ocen to około 2702, co wskazuje na dużą popularność gier.
+- Średnia ocena to 6.97, co sugeruje, że większość gier jest dobrze oceniana.
+- Wartości `year` mogą być ujemne (min: -3500), co oznacza wydanie gry przed naszą erą, uwzględnimy to podczas dalszej analizy.
+
+Sprawdzimy jakie są najczęściej występujące wartości w kolumnach z danymi kategorycznymi.
 ```{python}
 #| label: categorical-stats-1
 #| tbl-cap: Najczęściej występujący projektanci gier planszowych
@@ -275,6 +273,9 @@ Najczęściej występujące wartości w kolumnach z danymi kategorycznymi.
 # zwracamy uwagę na to, że każda kolumna z listą zawiera więcej niż jedną wartość
 print_table(df['designers'].explode().value_counts().head(10).reset_index().values, headers=['Projektant', 'Liczba gier'])
 ```
+
+Wiele gier ma nieznanego projektanta, są to głównie starsze gry, dla których trudno jest znaleźć dokładne informacje.
+
 ```{python}
 #| label: categorical-stats-2
 #| tbl-cap: Najczęściej występujący artyści gier planszowych
@@ -287,6 +288,8 @@ print_table(df['artists'].explode().value_counts().head(10).reset_index().values
 #| echo: false
 print_table(df['publishers'].explode().value_counts().head(10).reset_index().values, headers=['Wydawca', 'Liczba gier'])
 ```
+
+Wśród wydawców wyróżnia się Fantasy Flight Games, co nie jest zaskoczeniem, biorąc pod uwagę popularność ich gier.
 
 ## Analiza eksploracyjna
 
@@ -304,9 +307,13 @@ plt.title('Rozkład ocen gier planszowych')
 plt.show()
 ```
 
+- Najwięcej ocen znajduje się w przedziale 7-8. Oznacza to, że gry planszowe są najczęściej oceniane jako dobre lub bardzo dobre.
+- Liczba ocen gwałtownie spada w skrajnych przedziałach. Sugeruje to, że gry planszowe rzadko otrzymują skrajnie niskie lub skrajnie wysokie oceny.
+- Rozkład ocen nie jest symetryczny. Może to sugerować, że oceniający są bardziej skłonni do dawania ocen w górnym zakresie skali, ale nie najwyższych możliwych ocen.
+
 ```{python}
 #| label: correlation-matrix
-#| tbl-cap: Macierz korelacji między zmiennymi numerycznymi
+#| fig-cap: Macierz korelacji między zmiennymi numerycznymi
 #| echo: false
 corr = df.select_dtypes(include='number').corr()
 plt.matshow(corr)
@@ -320,6 +327,11 @@ plt.yticks(fontsize=8)
 plt.show()
 ```
 
+Zwróćmy szczególną uwagę na korelacje zmiennej `avg_rating` z innymi zmiennymi.
+Najbardziej skorelowana jest zmienna `complexity`, co sugeruje, że złożoność gry ma wpływ na jej ocenę.
+
+Odchylenie standardowe `std_rating` nie wykazuje silnych korelacji z innymi zmiennymi, co sugeruje, że różnorodność ocen nie jest silnie związana z innymi cechami gry.
+
 ```{python}
 #| label: top-games
 #| tbl-cap: Najczęściej oceniane gry planszowe i ich oceny
@@ -328,7 +340,8 @@ top_games = df[['name', 'avg_rating', 'ratings']].sort_values('ratings', ascendi
 print_table(top_games.values, headers=['Gra', 'Średnia ocena', 'Liczba ocen'])
 ```
 
-TODO: Liczba gier do projektantów
+Najpopularniejsze gry planszowe mają bardzo wysokie oceny, wskazując na ich wysoką jakość w oczach graczy.
+
 ```{python}
 #| label: top-designers
 #| tbl-cap: Najlepsi projektanci gier planszowych według średniej oceny
@@ -337,14 +350,9 @@ top_designers = df.explode('designers').groupby('designers')['avg_rating'].mean(
 print_table(top_designers.reset_index().values, headers=['Projektant', 'Średnia ocena'])
 ```
 
-- Cel analizy (np. zidentyfikowanie najpopularniejszych gier, analiza ocen w zależności od liczby graczy).
-- Metody analizy (np. statystyki opisowe, wizualizacje).
-- Szczegółowe wyniki:
-  - Wykresy, tabele, wnioski.
-  - Przykłady interesujących zależności.
+Najlepsi projektanci gier planszowych według średniej oceny to głównie znani i cenieni twórcy.
 
-Interesujące zależności:
-
+Pokażemy kilka interesujących zależności między zmiennymi:
 ```{python}
 #| label: complexity-vs-rating
 #| fig-cap: Złożoność w stosunku do średniej oceny
@@ -356,6 +364,9 @@ plt.ylabel("Średnia ocena")
 plt.show()
 ```
 
+Jak wcześniej sugerowała macierz korelacji, złożoność gry ma wpływ na jej ocenę.
+Widać tendencję, że gry o większej złożoności są lepiej oceniane.
+
 ```{python}
 #| label: fans-vs-rating
 #| fig-cap: Liczba fanów w stosunku do średniej oceny
@@ -366,6 +377,8 @@ plt.xlabel("Liczba fanów")
 plt.ylabel("Średnia ocena")
 plt.show()
 ```
+
+Słabo oceniane gry mają bardzo małą liczbę fanów. Gry z dużą liczbą fanów są zazwyczaj dobrze oceniane.
 
 ```{python}
 #| label: min-players-vs-rating
@@ -380,6 +393,10 @@ plt.ylabel("Średnia ocena")
 plt.show()
 ```
 
+Jeśli minimalna liczba graczy jest większa niż 4 to jest praktycznie pewne, że gra będzie dobrze oceniana.
+
+Z drugiej strony lepiej oceniane są średnio gry, w które można samemu, niż te, które wymagają większej liczby graczy.
+
 ```{python}
 #| label: avg-rating-by-year
 #| fig-cap: Średnia ocena gier planszowych na przestrzeni lat (od 1900 roku)
@@ -392,7 +409,9 @@ plt.xlim(1900, 2024)
 plt.show()
 ```
 
-Średnia ocena w zależności od projektanta (20 najpopularniejszych)
+Na wykresie pokazujemy jedynie gry wydane po 1900 roku, gdyż jest bardzo mało gier z&nbsp;wcześniejszych lat.
+Widać, że w ostatnich latach gry planszowe są coraz lepiej oceniane, co może świadczyć o postępie w tej dziedzinie.
+
 ```{python}
 #| label: avg-rating-by-designer
 #| fig-cap: Średnia ocena gier planszowych według projektantów
@@ -407,10 +426,13 @@ plt.ylabel("Projektant")
 plt.show()
 ```
 
-## Wyniki i wnioski
+Dla 20 najpopularniejszych projektantów gier planszowych, widać znaczące różnice w&nbsp;ocenach ich gier. Szczególnie widać, że słabo oceniane są gry z nieznanym projektantem.
 
-- Podsumowanie najważniejszych wyników analizy.
-- Interpretacja wyników w kontekście tematyki gier planszowych.
+## Wnioski
+
+Rynek gier planszowych dynamicznie się rozwija, co widać po wysokich ocenach i rosnącej popularności. Większość gier jest dobrze oceniana, z dominującym przedziałem 7-8, a bardziej złożone tytuły cieszą się szczególnym uznaniem. Najlepsze gry wyróżniają się wysoką jakością, a kluczową rolę odgrywają uznani wydawcy, tacy jak Fantasy Flight Games, oraz cenieni projektanci.
+
+Ostatnie lata przyniosły wzrost jakości nowych gier, co pokazuje innowacyjność i rozwój branży. Zaangażowanie społeczności graczy potwierdza znaczenie gier planszowych jako popularnego i stale rosnącego medium rozrywkowego.
 
 # Modelowanie predykcyjne
 
@@ -418,29 +440,221 @@ W przypadku predykcji oceny gry, nie będziemy korzystać z żadnej ze zmiennych
 
 ## Przygotowanie danych
 
+W celu przygotowania danych do modelowania, dzielimy zbiór danych na zbiór treningowy i testowy w stosunku 80:20. Następnie wybieramy zbiór cech, które będą wykorzystane do predykcji oceny gry.
+
 ```{python}
 #| label: prepare-data
 #| echo: false
-...
+columns = ['min_players', 'max_players', 'min_play_time', 'max_play_time', 'min_age', 'complexity',
+           'comments', 'fans', 'page_views', 'plays', 'plays_month', 'owners', 'prev_owned',
+           'for_trade', 'want_in_trade', 'wishlist', 'avg_rating', 'std_rating']
+
+# Z powodu wielu rzadko występujących wartości, bierzemy 50, 15, 5 i 5
+# najczęstszych wartości dla projektantów, artystów i wydawców
+# dla pozostałych wartości ustawiamy 'inne'
+top_values = {
+    'designers': df['designers'].explode().value_counts().nlargest(50).index,
+    'artists': df['artists'].explode().value_counts().nlargest(15).index,
+    'publishers': df['publishers'].explode().value_counts().nlargest(5).index
+}
+for column, top in top_values.items():
+    df[column] = df[column].apply(lambda x: [column+' '+i if i in top else 'other_'+column for i in x])
+
+mlb = MultiLabelBinarizer()
+for column in top_values.keys():
+    df = df.join(pd.DataFrame(mlb.fit_transform(df[column]), columns=mlb.classes_, index=df.index))
+df = df.drop(columns=['designers', 'artists', 'publishers'])
+
+
+X = df.drop(columns=['ratings_1', 'ratings_2', 'ratings_3', 'ratings_4', 'ratings_5',
+                     'ratings_6', 'ratings_7', 'ratings_8', 'ratings_9', 'ratings_10',
+                     'avg_rating', 'std_rating', 'name', 'alternate_names'])
+y = df[['avg_rating', 'std_rating']]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=314)
+mse = {}
 ```
+
+## Regresja liniowa
+
+Pierwszym modelem, który zastosujemy, jest regresja liniowa. Regresja liniowa jest jednym z najprostszych modeli regresji, który zakłada liniową zależność między zmiennymi niezależnymi a zmienną zależną.
+
+```{python}
+#| label: linear-regression
+model = LinearRegression()
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+```
+
+### Ocena modelu
+
+```{python}
+#| label: linear-regression-evaluation
+#| tbl-cap: Ocena modelu regresji liniowej
+#| echo: false
+mse_avg = mean_squared_error(y_test['avg_rating'], y_pred[:, 0])
+mse_std = mean_squared_error(y_test['std_rating'], y_pred[:, 1])
+mse['lr'] = (mse_avg, mse_std)
+print_table([['Metryka', 'Średni błąd kwadratowy'],
+             ['Średnia ocena', mse_avg],
+             ['Odchylenie standardowe ocen', mse_std]])
+```
+
+Regresja liniowa zakłada prostą, liniową relację między cechami a wynikami, co może prowadzić do niedoszacowania lub przeszacowania wpływu niektórych cech, szczególnie gdy dane mają charakter nieliniowy.
+
+### Ważność cech
+
+```{python}
+#| label: linear-regression-feature-importance-1
+#| fig-cap: Ważność cech w modelu regresji liniowej dla średniej oceny
+#| echo: false
+feature_importance = model.coef_[0]
+feature_names = X_train.columns
+for column in ['designers', 'artists', 'publishers']:
+    indices = [i for i, feature in enumerate(feature_names) if feature.startswith(column)]
+    importance = feature_importance[indices].sum()
+    feature_importance = np.delete(feature_importance, indices)
+    feature_importance = np.append(feature_importance, importance)
+    feature_names = np.delete(feature_names, indices)
+    feature_names = np.append(feature_names, column)
+feature_importance = np.abs(feature_importance)
+feature_importance = feature_importance / feature_importance.sum()
+sort = np.argsort(feature_importance)
+plt.barh(feature_names[sort], feature_importance[sort])
+plt.xlabel('Ważność cech')
+plt.title('Ważność cech w modelu regresji liniowej dla średniej oceny')
+plt.gcf().set_figheight(3.5)
+plt.show()
+```
+
+```{python}
+#| label: linear-regression-feature-importance-2
+#| fig-cap: Ważność cech w modelu regresji liniowej dla odchylenia standardowego ocen
+#| echo: false
+feature_importance = model.coef_[1]
+feature_names = X_train.columns
+for column in ['designers', 'artists', 'publishers']:
+    indices = [i for i, feature in enumerate(feature_names) if feature.startswith(column)]
+    importance = feature_importance[indices].sum()
+    feature_importance = np.delete(feature_importance, indices)
+    feature_importance = np.append(feature_importance, importance)
+    feature_names = np.delete(feature_names, indices)
+    feature_names = np.append(feature_names, column)
+feature_importance = np.abs(feature_importance)
+feature_importance = feature_importance / feature_importance.sum()
+sort = np.argsort(feature_importance)
+plt.barh(feature_names[sort], feature_importance[sort])
+plt.xlabel('Ważność cech')
+plt.title('Ważność cech w modelu regresji liniowej dla odchylenia standardowego ocen')
+plt.gcf().set_figheight(3.5)
+plt.show()
+```
+
+### Wnioski
+
+- Zarówno średnia ocena, jak i odchylenie standardowe ocen są w dużej mierze kształtowane przez cechy związane z twórcami gry (projektanci, artyści, wydawcy). Sugeruje to, że renoma i liczba osób zaangażowanych w tworzenie gry mają kluczowe znaczenie.
+- Złożoność gry jest istotnym czynnikiem dla średniej oceny, ale mniej wpływa na zróżnicowanie ocen. Gry o większej głębi mogą być bardziej doceniane, ale niekoniecznie wywołują większe kontrowersje wśród graczy.
+- Statystyki dotyczące liczby rozgrywek, komentarzy czy wyświetleń strony mają marginalny wpływ, co może wskazywać, że czynniki związane z jakością gry są ważniejsze niż jej popularność.
+- Parametry związane z wymianą i handlem grami mają zauważalny wpływ, co może być interesującą wskazówką dla twórców i wydawców, że popyt na rynku wtórnym może korelować z ocenami gry.
+
+## Gradient Boosting
+
+Kolejnym modelem, który zastosujemy, jest Gradient Boosting. Gradient Boosting to technika uczenia maszynowego, która polega na łączeniu wielu słabych modeli predykcyjnych w celu uzyskania silnego modelu.
+
+```{python}
+#| label: gradient-boosting
+model = MultiOutputRegressor(GradientBoostingRegressor(random_state=314))
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+```
+
+### Ocena modelu
+
+```{python}
+#| label: gradient-boosting-evaluation
+#| tbl-cap: Ocena modelu Gradient Boosting
+#| echo: false
+mse_avg = mean_squared_error(y_test['avg_rating'], y_pred[:, 0])
+mse_std = mean_squared_error(y_test['std_rating'], y_pred[:, 1])
+mse['gb'] = (mse_avg, mse_std)
+print_table([['Metryka', 'Średni błąd kwadratowy'],
+             ['Średnia ocena', mse_avg],
+             ['Odchylenie standardowe ocen', mse_std]])
+```
+
+Model Gradient Boosting osiągnął znacznie niższy błąd, co wskazuje na lepszą zdolność przewidywania średniej oceny gry. Wynika to z elastyczności GB, który lepiej uwzględnia nieliniowe zależności i interakcje między cechami.
+
+### Ważność cech
+
+```{python}
+#| label: gradient-boosting-feature-importance-1
+#| fig-cap: Ważność cech w modelu Gradient Boosting dla średniej oceny
+#| echo: false
+feature_importance = model.estimators_[0].feature_importances_
+feature_names = X_train.columns
+for column in ['designers', 'artists', 'publishers']:
+    indices = [i for i, feature in enumerate(feature_names) if feature.startswith(column)]
+    importance = feature_importance[indices].sum()
+    feature_importance = np.delete(feature_importance, indices)
+    feature_importance = np.append(feature_importance, importance)
+    feature_names = np.delete(feature_names, indices)
+    feature_names = np.append(feature_names, column)
+feature_importance = np.abs(feature_importance)
+feature_importance = feature_importance / feature_importance.sum()
+sort = np.argsort(feature_importance)
+plt.barh(feature_names[sort], feature_importance[sort])
+plt.xlabel('Ważność cech')
+plt.title('Ważność cech w modelu Gradient Boosting dla średniej oceny')
+plt.gcf().set_figheight(3.5)
+plt.show()
+```
+
+```{python}
+#| label: gradient-boosting-feature-importance-2
+#| fig-cap: Ważność cech w modelu Gradient Boosting dla odchylenia standardowego ocen
+#| echo: false
+feature_importance = model.estimators_[1].feature_importances_
+feature_names = X_train.columns
+for column in ['designers', 'artists', 'publishers']:
+    indices = [i for i, feature in enumerate(feature_names) if feature.startswith(column)]
+    importance = feature_importance[indices].sum()
+    feature_importance = np.delete(feature_importance, indices)
+    feature_importance = np.append(feature_importance, importance)
+    feature_names = np.delete(feature_names, indices)
+    feature_names = np.append(feature_names, column)
+feature_importance = np.abs(feature_importance)
+feature_importance = feature_importance / feature_importance.sum()
+sort = np.argsort(feature_importance)
+plt.barh(feature_names[sort], feature_importance[sort])
+plt.xlabel('Ważność cech')
+plt.title('Ważność cech w modelu Gradient Boosting dla odchylenia standardowego ocen')
+plt.gcf().set_figheight(3.5)
+plt.show()
+```
+
+### Wnioski
+
+- Model GB uwzględnia złożone i nieliniowe zależności między cechami, co pozwala mu lepiej wykorzystać dane. Dzięki temu cechy takie jak rynek wtórny (`for_trade`, `want_in_trade`) oraz popularność (`page_views`, `owners`) stają się bardziej istotne.
+- Regresja liniowa nadmiernie polega na cechach o bezpośrednim wpływie, takich jak liczba projektantów czy artystów, podczas gdy pomija subtelne zależności w&nbsp;danych.
+- W regresji liniowej dominują cechy silnie powiązane z jakością twórców (projektanci, artyści), podczas gdy GB lepiej uwzględnia popularność, rynek wtórny oraz nieliniowe relacje między cechami.
+- Regresja liniowa może być użyteczna dla prostych interpretacji, podczas gdy Gradient Boosting jest bardziej odpowiedni do analizy złożonych zależności w danych.
 
 # Podsumowanie
 
-Wnioski końcowe
+Projekt polegał na scrapowaniu danych o grach planszowych z serwisu BoardGameGeek oraz analizie tych danych. Proces scrapowania został zrealizowany za pomocą skryptu w&nbsp;Pythonie, który wykorzystuje bibliotekę Selenium do nawigacji po stronie internetowej i pobierania informacji o grach. Zebrane dane zostały następnie poddane analizie przy użyciu różnych technik analizy danych i uczenia maszynowego.
 
-- Refleksje nad procesem realizacji projektu.
-- Możliwości ulepszenia scrapera i analizy w przyszłości.
+## Kluczowe wnioski z analizy danych
 
-**Zastosowania Scrapera:**
+1. **Oceny gier**: Większość gier planszowych jest dobrze oceniana przez użytkowników, z największą liczbą ocen w przedziale 7-8.
+2. **Złożoność gry**: Gry o większej złożoności są lepiej oceniane, co sugeruje, że gracze cenią bardziej skomplikowane i wymagające gry.
+3. **Popularność**: Najpopularniejsze gry mają bardzo wysokie oceny, co wskazuje na ich wysoką jakość. Wydawcy tacy jak Fantasy Flight Games dominują na rynku.
+4. **Trendy**: W ostatnich latach gry planszowe są coraz lepiej oceniane, co może świadczyć o postępie w tej dziedzinie i rosnącej jakości nowych gier.
+5. **Projektanci**: Renoma projektantów, artystów i wydawców ma znaczący wpływ na oceny gier.
 
-1. **Analiza gier planszowych**  
-   Dane zebrane przez scraper mogą być wykorzystane do analiz popularności, ocen i statystyk związanych z grami planszowymi.
-   
-2. **Tworzenie rekomendacji**  
-   Informacje o ocenach i opiniach użytkowników mogą służyć do budowania systemów rekomendacyjnych.
+## Modelowanie predykcyjne
 
-3. **Porównania i statystyki rynkowe**  
-   Zebrane dane umożliwiają identyfikację trendów w branży gier planszowych, popularnych projektantów czy wydawców.
+1. **Regresja liniowa**: Model regresji liniowej wykazał, że cechy związane z twórcami gry mają kluczowe znaczenie dla średniej oceny i odchylenia standardowego ocen.
+2. **Gradient Boosting**: Model Gradient Boosting osiągnął lepsze wyniki, uwzględniając złożone i nieliniowe zależności między cechami. Cechy takie jak popularność i rynek wtórny stały się bardziej istotne.
 
-4. **Tworzenie baz danych**  
-   Dzięki zapisowi danych w pliku CSV, możliwe jest łatwe tworzenie własnych baz danych do dalszych analiz.
+## Wnioski końcowe
+
+Analiza pokazuje, że rynek gier planszowych jest dynamiczny i rozwijający się, z rosnącą jakością gier i dużym zaangażowaniem społeczności graczy. Modele predykcyjne mogą być użyteczne w przewidywaniu ocen gier na podstawie ich cech, co może być cenną wskazówką dla twórców i wydawców gier planszowych.
