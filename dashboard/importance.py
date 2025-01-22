@@ -7,7 +7,7 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import matplotlib.pyplot as plt
+import altair as alt
 
 st.title("Ważność zmiennych")
 
@@ -32,7 +32,7 @@ def prepare_data(df):
         'publishers': df['publishers'].explode().value_counts().nlargest(5).index
     }
     for column, top in top_values.items():
-        df[column] = df[column].apply(lambda x: [column+' '+i if i in top else 'other_'+column for i in x])
+        df[column] = df[column].apply(lambda x: [column+' '+i if i in top else column+' other' for i in x])
 
     mlb = MultiLabelBinarizer()
     for column in top_values.keys():
@@ -65,6 +65,7 @@ Model regresji liniowej osiągnął następujące wyniki:
 - Średni błąd kwadratowy dla odchylenia standardowego ocen: {mse[1]:.4f}
 """)
 
+@st.cache_data
 def importance_lr(coefs, title):
     feature_importance = coefs
     feature_names = X_train.columns
@@ -78,15 +79,22 @@ def importance_lr(coefs, title):
     feature_importance = np.abs(feature_importance)
     feature_importance = feature_importance / feature_importance.sum()
     sort = np.argsort(feature_importance)
-    plt.barh(feature_names[sort], feature_importance[sort])
-    plt.xlabel('Ważność cech')
-    plt.title(title)
-    return plt.gcf()
+    data = pd.DataFrame({
+        'Cecha': feature_names[sort],
+        'Ważność': feature_importance[sort]
+    })
+    chart = alt.Chart(data).mark_bar().encode(
+        x='Ważność:Q',
+        y=alt.Y('Cecha:N', sort='-x')
+    ).properties(
+        title=title
+    )
+    return chart
 
 plot = importance_lr(coefs[0], 'Ważność cech w modelu regresji liniowej dla średniej oceny')
-st.pyplot(plot, clear_figure=True)
+st.altair_chart(plot, use_container_width=True)
 plot = importance_lr(coefs[1], 'Ważność cech w modelu regresji liniowej dla odchylenia standardowego ocen')
-st.pyplot(plot, clear_figure=True)
+st.altair_chart(plot, use_container_width=True)
 
 st.header("Ważność cech w modelu gradient boosting")
 
@@ -121,12 +129,19 @@ def importance_gb(feature_importance, title, feature_names = X_train.columns):
     feature_importance = np.abs(feature_importance)
     feature_importance = feature_importance / feature_importance.sum()
     sort = np.argsort(feature_importance)
-    plt.barh(feature_names[sort], feature_importance[sort])
-    plt.xlabel('Ważność cech')
-    plt.title(title)
-    return plt.gcf()
+    data = pd.DataFrame({
+        'Cecha': feature_names[sort],
+        'Ważność': feature_importance[sort]
+    })
+    chart = alt.Chart(data).mark_bar().encode(
+        x='Ważność:Q',
+        y=alt.Y('Cecha:N', sort='-x')
+    ).properties(
+        title=title
+    )
+    return chart
 
 plot = importance_gb(coefs[0], 'Ważność cech w modelu Gradient Boosting dla średniej oceny')
-st.pyplot(plot, clear_figure=True)
+st.altair_chart(plot, use_container_width=True)
 plot = importance_gb(coefs[1], 'Ważność cech w modelu Gradient Boosting dla odchylenia standardowego ocen')
-st.pyplot(plot, clear_figure=True)
+st.altair_chart(plot, use_container_width=True)

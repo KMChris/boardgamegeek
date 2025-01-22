@@ -29,7 +29,7 @@ mpl.rcParams['figure.figsize'] = (8, 6)
 # load data
 st.session_state.df = read_games('scraper/games.csv')
 st.session_state.cols_dict = {
-    'Trudność gry': 'complexity',
+    'Złożoność gry': 'complexity',
     'Średnia ocena': 'avg_rating',
     'Odchylenie standardowe ocen': 'std_rating',
     'Rok wydania gry': 'year',
