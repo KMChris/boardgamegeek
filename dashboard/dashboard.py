@@ -67,16 +67,16 @@ st.session_state.cols_dict = {
 
 st.set_page_config(page_title='BGG Dashboard', page_icon='🎲',
                    initial_sidebar_state='expanded', menu_items={
-                   'Get Help': None,
-                   'Report a bug': None,
-                   'About': None
+                     'Get Help': None,
+                     'Report a bug': None,
+                     'About': None
                    })
 
 info = st.Page("info.py", title="Informacje", icon=":material/article:") #icon=":material/info:")
 dataset = st.Page("dataset.py", title="Zbiór danych", icon=":material/table_chart:")
 statistics = st.Page("stats.py", title="Statystyki opisowe", icon=":material/bar_chart:")
 eda = st.Page("eda.py", title="Analiza eksploracyjna", icon=":material/scatter_plot:")
-importance1 = st.Page("importance.py", title="Ważność zmiennych", icon=":material/insights:")
+importance = st.Page("importance.py", title="Ważność zmiennych", icon=":material/insights:")
 
-pg = st.navigation([info, dataset, statistics, eda, importance1])
+pg = st.navigation([info, dataset, statistics, eda, importance])
 pg.run()
