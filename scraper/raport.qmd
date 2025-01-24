@@ -458,7 +458,7 @@ top_values = {
     'publishers': df['publishers'].explode().value_counts().nlargest(5).index
 }
 for column, top in top_values.items():
-    df[column] = df[column].apply(lambda x: [column+' '+i if i in top else 'other_'+column for i in x])
+    df[column] = df[column].apply(lambda x: [column+' '+i if i in top else column+'_other' for i in x])
 
 mlb = MultiLabelBinarizer()
 for column in top_values.keys():

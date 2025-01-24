@@ -26,8 +26,11 @@ st.altair_chart(plot, use_container_width=True)
 st.header("Wykres punktowy")
 st.text("Wybierz dwie zmienne, aby zobaczyć ich zależność na wykresie punktowym.")
 cols = st.session_state.cols_dict
-x_var = st.selectbox('Wybierz zmienną X', cols.keys(), index=0)
-y_var = st.selectbox('Wybierz zmienną Y', cols.keys(), index=1)
+col1, col2 = st.columns(2)
+with col1:
+    x_var = st.selectbox('Wybierz zmienną X', cols.keys(), index=0)
+with col2:
+    y_var = st.selectbox('Wybierz zmienną Y', cols.keys(), index=1)
 
 @st.cache_data(hash_funcs={pd.DataFrame: lambda df: df.shape})
 def plot_scatter(df, x_var, y_var, cols):

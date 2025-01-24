@@ -72,11 +72,11 @@ st.set_page_config(page_title='BGG Dashboard', page_icon='🎲',
                      'About': None
                    })
 
-info = st.Page("info.py", title="Informacje", icon=":material/article:") #icon=":material/info:")
-dataset = st.Page("dataset.py", title="Zbiór danych", icon=":material/table_chart:")
-statistics = st.Page("stats.py", title="Statystyki opisowe", icon=":material/bar_chart:")
-eda = st.Page("eda.py", title="Analiza eksploracyjna", icon=":material/scatter_plot:")
-importance = st.Page("importance.py", title="Ważność zmiennych", icon=":material/insights:")
+dataset = st.Page("dashboard/dataset.py", title="Zbiór danych", icon=":material/table_chart:")
+statistics = st.Page("dashboard/stats.py", title="Statystyki opisowe", icon=":material/bar_chart:")
+eda = st.Page("dashboard/eda.py", title="Analiza eksploracyjna", icon=":material/scatter_plot:")
+importance = st.Page("dashboard/importance.py", title="Ważność zmiennych", icon=":material/insights:")
+info = st.Page("dashboard/info.py", title="Informacje", icon=":material/info:")
 
-pg = st.navigation([info, dataset, statistics, eda, importance])
+pg = st.navigation([dataset, statistics, eda, importance, info])
 pg.run()

@@ -1,25 +1,55 @@
 import streamlit as st
 
-st.title("Tabela danych")
+st.title("Gry planszowe")
 
 df = st.session_state.df
 
 st.subheader("Filtrowanie danych")
 
-rating_filter = st.slider('Średnia ocena', min_value=0.0, max_value=10.0, value=(0.0, 10.0))
-std_filter = st.slider('Odchylenie standardowe', min_value=df.std_rating.min(), max_value=df.std_rating.max(), value=(df.std_rating.min(), df.std_rating.max()))
+col1, col2, col3 = st.columns(3)
+with col1:
+    rating_filter = st.slider('Średnia ocena',
+                              min_value=0.0,
+                              max_value=10.0,
+                              value=(0.0, 10.0))
+with col2:
+    std_filter = st.slider('Odchylenie standardowe',
+                           min_value=df.std_rating.min(),
+                           max_value=df.std_rating.max(),
+                           value=(df.std_rating.min(), df.std_rating.max()))
+with col3:
+    complexity_filter = st.slider('Złożoność gry',
+                                  min_value=1.0,
+                                  max_value=5.0,
+                                  value=(1.0, 5.0))
 
 col1, col2 = st.columns(2)
 with col1:
-    min_year = st.number_input('Minimalny rok', min_value=int(df['year'].min()), max_value=int(df['year'].max()), value=int(df['year'].min()))
-    min_players = st.number_input('Minimalna liczba graczy', min_value=int(df['min_players'].min()), max_value=int(df['max_players'].max()), value=int(df['min_players'].min()))
-    min_time = st.number_input('Minimalny czas gry (minuty)', min_value=int(df['min_play_time'].min()), max_value=int(df['max_play_time'].max()), value=int(df['min_play_time'].min()))
+    min_year = st.number_input('Minimalny rok',
+                               min_value=int(df['year'].min()),
+                               max_value=int(df['year'].max()),
+                               value=int(df['year'].min()))
+    min_players = st.number_input('Minimalna liczba graczy',
+                                  min_value=int(df['min_players'].min()),
+                                  max_value=int(df['max_players'].max()),
+                                  value=int(df['min_players'].min()))
+    min_time = st.number_input('Minimalny czas gry (minuty)',
+                               min_value=int(df['min_play_time'].min()),
+                               max_value=int(df['max_play_time'].max()),
+                               value=int(df['min_play_time'].min()))
 with col2:
-    max_year = st.number_input('Maksymalny rok', min_value=int(df['year'].min()), max_value=int(df['year'].max()), value=int(df['year'].max()))
-    max_players = st.number_input('Maksymalna liczba graczy', min_value=int(df['min_players'].min()), max_value=int(df['max_players'].max()), value=int(df['max_players'].max()))
-    max_time = st.number_input('Maksymalny czas gry (minuty)', min_value=int(df['min_play_time'].min()), max_value=int(df['max_play_time'].max()), value=int(df['max_play_time'].max()))
-
-complexity_filter = st.slider('Złożoność gry', min_value=1.0, max_value=5.0, value=(1.0, 5.0))
+    max_year = st.number_input('Maksymalny rok',
+                               min_value=int(df['year'].min()),
+                               max_value=int(df['year'].max()),
+                               value=int(df['year'].max()))
+    max_players = st.number_input('Maksymalna liczba graczy',
+                                  min_value=int(df['min_players'].min()),
+                                  max_value=int(df['max_players'].max()),
+                                  value=int(df['max_players'].max()))
+    max_time = st.number_input('Maksymalny czas gry (minuty)',
+                               min_value=int(df['min_play_time'].min()),
+                               max_value=int(df['max_play_time'].max()),
+                               value=int(df['max_play_time'].max()))
 
 filtered_df = df[
     (df['year'] >= min_year) & (df['year'] <= max_year) &
@@ -31,6 +61,7 @@ filtered_df = df[
 ]
 
 cols = df.columns
-selected_cols = st.multiselect('Wybierz kolumny do wyświetlenia', cols, default=['name', 'year', 'complexity', 'ratings', 'avg_rating', 'std_rating', 'comments', 'plays'])
+selected_cols = st.multiselect('Wybierz kolumny do wyświetlenia', cols,
+    default=['name', 'year', 'complexity', 'ratings', 'avg_rating', 'std_rating', 'comments', 'plays'])
 
 st.write(filtered_df[selected_cols])
